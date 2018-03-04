@@ -115,7 +115,11 @@ def get_df_from_xml(data_url):
 				shared = child.find('Shared')
 				voting_none = child.find('None')
 			
-		df_xml = df_xml.append(pd.Series([getvalueofnode(nameOfIssuer), getvalueofnode(titleOfClass), getvalueofnode(cusip),getvalueofnode(value),getvalueofnode(investmentDiscretion),getvalueofnode(otherManager),getvalueofnode(sshPrnamt),getvalueofnode(sshPrnamtType),getvalueofnode(putCall),getvalueofnode(sole),getvalueofnode(shared),getvalueofnode(voting_none)], index=dfcols),ignore_index=True)
+		if getvalueofnode(otherManager):
+			otherManager = getvalueofnode(otherManager).rstrip()
+		else:
+			otherManager = getvalueofnode(otherManager)
+		df_xml = df_xml.append(pd.Series([getvalueofnode(nameOfIssuer), getvalueofnode(titleOfClass), getvalueofnode(cusip),getvalueofnode(value),getvalueofnode(investmentDiscretion),otherManager,getvalueofnode(sshPrnamt),getvalueofnode(sshPrnamtType),getvalueofnode(putCall),getvalueofnode(sole),getvalueofnode(shared),getvalueofnode(voting_none)], index=dfcols),ignore_index=True)
 	return df_xml
 
 def get_info_urls(cik):
@@ -123,9 +127,10 @@ def get_info_urls(cik):
 	dataRequest = bs(requests.get(request_host + base_form).content, 'lxml')
 	table = dataRequest.find("table",{"class":"tableFile2"})
 
-	for i in table.find_all('a',href=True):
-		q_report = i['href']
-		if q_report.startswith( '/Archives' ):
+	for td in table.find_all('tr')[1:]:
+		tds = td.find_all('td')
+		if tds[0].text == '13F-HR' and tds[1].find('a',href=True)['href'].startswith( '/Archives' ):
+			q_report = tds[1].find('a',href=True)['href']
 			q_Request = bs(requests.get(request_host + q_report).content, 'lxml')
 			#================================
 			# Get filing date and period date
@@ -146,7 +151,7 @@ def get_info_urls(cik):
 			for index in xml_index:
 				index_url = index-1
 				xml_index = q_table.find_all('td')[index_url].find('a',href=True)
-				if '.xml' in xml_index.text:
+				if  xml_index is not None and '.xml' in xml_index.text:
 					xml_url = xml_index['href']
 					break
 			#======================================
@@ -154,13 +159,14 @@ def get_info_urls(cik):
 			#======================================
 			if xml_url:
 				data_url = request_host + xml_url
+				# data_url = request_host + '/Archives/edgar/data/750641/000108514613001751/form13fInfoTable.xml'
 				df_xml = get_df_from_xml(data_url)
 				df_xml['cik']=cik
 				df_xml['filing_date']=info_filing_date
 				df_xml['period_date']=info_period_date
 				upload_data_to_db(df_xml,'information_table')
 			else:
-				print('no xml url found')
+				print('no xml url found - {0} - period:{1}'.format(cik,info_period_date))
 				break
 
 def db_table_create():
@@ -189,21 +195,29 @@ def db_table_create():
 						
 def main():
 	global request_host,base_form,path,conn
-
+	conn = psycopg2.connect("dbname='doris_postgre' user='doris' host='localhost' password='' port='5432'")
+	db_table_create()
 	abspath = os.path.abspath(sys.argv[0])
 	path =  os.path.abspath(os.path.join(abspath ,'..'))
 
 	request_host = 'https://www.sec.gov'
 	# cik = '1350694'
-	cik = '1029160'
-	base_form = '/cgi-bin/browse-edgar?action=getcompany&CIK={0}&type=13F-HR&dateb=&owner=include&count=100'.format(cik)
+	hedgefund_list_path = path + '/hedgeFundList.csv'
+	hedgefund_list_df = pd.read_csv(hedgefund_list_path)
 	
-	conn = psycopg2.connect("dbname='doris_postgre' user='doris' host='localhost' password='' port='5432'")
+	for i,row in hedgefund_list_df.iterrows():
+		cik = row['CIK']
+		base_form = '/cgi-bin/browse-edgar?action=getcompany&CIK={0}&type=13F-HR&dateb=&owner=include&count=100'.format(cik)
+		get_info_urls(cik)
+
+	# cik = '750641'
+	# base_form = '/cgi-bin/browse-edgar?action=getcompany&CIK={0}&type=13F-HR&dateb=&owner=include&count=100'.format(cik)
+	# get_info_urls(cik)
 	# conn = postgres_conn('xin')
 
-	db_table_create()
 
-	get_info_urls(cik)
+
+	print('Finish!')
 
 	conn.close() 
 
