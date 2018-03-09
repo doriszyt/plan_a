@@ -159,8 +159,12 @@ def get_info_urls(cik):
 			#======================================
 			if xml_url:
 				data_url = request_host + xml_url
-				# data_url = request_host + '/Archives/edgar/data/750641/000108514613001751/form13fInfoTable.xml'
-				df_xml = get_df_from_xml(data_url)
+				# data_url = request_host + '/Archives/edgar/data/928400/000090044016000185/Elkhorn13FChart1.xmldata.xml'
+				try:
+					df_xml = get_df_from_xml(data_url)
+				except Exception as e:
+					print ('ERROR: {0} - filling:{1}'.format(cik,info_filing_date))
+					print ('Error msg: {}'.format(str(e)))
 				df_xml['cik']=cik
 				df_xml['filing_date']=info_filing_date
 				df_xml['period_date']=info_period_date
@@ -201,7 +205,7 @@ def main():
 	path =  os.path.abspath(os.path.join(abspath ,'..'))
 
 	request_host = 'https://www.sec.gov'
-	# cik = '1350694'
+
 	hedgefund_list_path = path + '/hedgeFundList.csv'
 	hedgefund_list_df = pd.read_csv(hedgefund_list_path)
 	
@@ -210,7 +214,7 @@ def main():
 		base_form = '/cgi-bin/browse-edgar?action=getcompany&CIK={0}&type=13F-HR&dateb=&owner=include&count=100'.format(cik)
 		get_info_urls(cik)
 
-	# cik = '750641'
+	# cik = '928400'
 	# base_form = '/cgi-bin/browse-edgar?action=getcompany&CIK={0}&type=13F-HR&dateb=&owner=include&count=100'.format(cik)
 	# get_info_urls(cik)
 	# conn = postgres_conn('xin')
